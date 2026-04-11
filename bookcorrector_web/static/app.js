@@ -19,7 +19,7 @@ let analysisState = null;
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setLoadingState(true, "Analyse en cours...");
+  setLoadingState(true, "Analyse en cours…");
 
   const formData = new FormData();
   if (fileInput.files[0]) {
@@ -81,8 +81,7 @@ exportDocxButton.addEventListener("click", async () => {
     return;
   }
 
-  setLoadingState(true, "Generation du document Word...");
-  const rendered = computeRenderedState();
+  setLoadingState(true, "Génération du document Word…");
   try {
     const response = await fetch("/api/export-docx", {
       method: "POST",
@@ -94,7 +93,6 @@ exportDocxButton.addEventListener("click", async () => {
         original_text: analysisState.original_text,
         issues: analysisState.issues,
         selected_ids: Array.from(analysisState.selectedIds),
-        corrected_segments: rendered.correctedSegments,
       }),
     });
 
@@ -112,7 +110,7 @@ exportDocxButton.addEventListener("click", async () => {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    showStatus("Export Word termine.");
+    showStatus("Export Word terminé.");
   } catch (error) {
     showStatus(error.message, true);
   } finally {
@@ -166,7 +164,7 @@ function renderAnalysis() {
   const warnings = (analysisState.warnings || []).filter(Boolean);
   const summary = [
     `Document: ${analysisState.filename}`,
-    `${analysisState.issues.length} suggestion(s) detectee(s).`,
+    `${analysisState.issues.length} suggestion(s) détectée(s).`,
     warnings.length ? `Notes techniques: ${warnings.join(" | ")}` : "Aucun avertissement technique.",
   ].join("\n");
   showStatus(summary, false);
@@ -211,8 +209,8 @@ function renderStats(stats) {
 
 function renderViews(rendered) {
   originalView.innerHTML = rendered.originalHtml || "<em>Aucun texte.</em>";
-  correctedView.innerHTML = rendered.correctedHtml || "<em>Aucune correction appliquee.</em>";
-  selectionCounter.textContent = `${analysisState.selectedIds.size} selection${analysisState.selectedIds.size > 1 ? "s" : ""}`;
+  correctedView.innerHTML = rendered.correctedHtml || "<em>Aucune correction appliquée.</em>";
+  selectionCounter.textContent = `${analysisState.selectedIds.size} sélection${analysisState.selectedIds.size > 1 ? "s" : ""}`;
 }
 
 function renderSuggestions() {
@@ -240,7 +238,7 @@ function renderSuggestions() {
     fragment.querySelector(".suggestion-message").textContent = issue.message;
     fragment.querySelector(".suggestion-excerpt").textContent = issue.excerpt;
     fragment.querySelector(".suggestion-replacement").textContent = issue.replacement
-      ? `Correction proposee: ${issue.replacement}`
+      ? `Correction proposée: ${issue.replacement}`
       : `Suggestion: ${issue.suggestion || "Aucune correction automatique."}`;
 
     if (!issue.replacement) {

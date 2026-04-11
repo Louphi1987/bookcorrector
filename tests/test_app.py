@@ -49,6 +49,19 @@ class AppTestCase(unittest.TestCase):
         self.assertTrue(registre_issues)
         self.assertTrue(all(issue["replacement"] is None for issue in registre_issues))
 
+    def test_avoids_obvious_false_positives(self) -> None:
+        response = self.client.post(
+            "/api/analyze",
+            data={"text": "Ce genre littéraire, quelque part dans le chapitre, ainsi que sa fin, il a ouvert le débat."},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        excerpts = {issue["excerpt"] for issue in payload["issues"]}
+        self.assertNotIn("genre", excerpts)
+        self.assertNotIn("quelque part", excerpts)
+        self.assertNotIn("ainsi que", excerpts)
+        self.assertNotIn("il a ouvert", excerpts)
+
     def test_export_docx(self) -> None:
         response = self.client.post(
             "/api/export-docx",
