@@ -25,6 +25,8 @@ Application web de correction de manuscrits en francais, prevue pour un deploiem
 - python-docx
 - HTML/CSS/JavaScript vanille
 
+Le fichier `.python-version` force Render a utiliser Python 3.12.
+
 ## Lancement local
 
 ```bash
