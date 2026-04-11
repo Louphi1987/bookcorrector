@@ -11,14 +11,14 @@
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Karamaz Correcteur</p>
-          <h1>Un correcteur web gratuit pour manuscrits en francais</h1>
+          <h1>Un correcteur web gratuit pour manuscrits en français</h1>
           <p class="hero-text">
-            Depose un texte, analyse les suggestions, compare l'avant et l'apres, puis exporte une version Word claire pour retravailler ton manuscrit.
+            Dépose un texte, analyse les suggestions, compare l'avant et l'après, puis exporte une version Word claire pour retravailler ton manuscrit.
           </p>
           <div class="hero-notes">
             <span>Sans API payante</span>
             <span>Compatible Render gratuit</span>
-            <span>Service annexe potentiellement plus lent au reveil</span>
+            <span>Service annexe potentiellement plus lent au réveil</span>
           </div>
         </div>
         <div class="upload-card">
@@ -33,10 +33,10 @@
             <textarea id="text-input" name="text" placeholder="Colle ici ton texte si tu ne veux pas uploader de fichier."></textarea>
             <div class="actions">
               <button class="primary-button" type="submit">Analyser le manuscrit</button>
-              <button class="secondary-button" id="clear-button" type="button">Reinitialiser</button>
+              <button class="secondary-button" id="clear-button" type="button">Réinitialiser</button>
             </div>
             <p class="latency-note">
-              Si le service est sur un plan gratuit en veille, la premiere analyse peut prendre un peu plus de temps.
+              Si le service est sur un plan gratuit en veille, la première analyse peut prendre un peu plus de temps.
             </p>
           </form>
         </div>
@@ -46,8 +46,8 @@
         <div class="toolbar">
           <div class="stats-grid" id="stats-grid"></div>
           <div class="toolbar-actions">
-            <button class="secondary-button" id="select-safe-button" type="button">Appliquer les corrections sures</button>
-            <button class="secondary-button" id="unselect-all-button" type="button">Tout desactiver</button>
+            <button class="secondary-button" id="select-safe-button" type="button">Appliquer les corrections sûres</button>
+            <button class="secondary-button" id="unselect-all-button" type="button">Tout désactiver</button>
             <button class="primary-button" id="export-docx-button" type="button">Exporter en Word</button>
           </div>
         </div>
@@ -58,14 +58,14 @@
           <article class="panel">
             <div class="panel-header">
               <h2>Texte original</h2>
-              <p>Les passages signales apparaissent en surbrillance.</p>
+              <p>Les passages signalés apparaissent en surbrillance.</p>
             </div>
             <div class="text-view issue-view" id="original-view"></div>
           </article>
           <article class="panel">
             <div class="panel-header">
-              <h2>Version corrigee</h2>
-              <p>Les changements selectionnes sont marques dans le texte.</p>
+              <h2>Version corrigée</h2>
+              <p>Les changements sélectionnés sont marqués dans le texte.</p>
             </div>
             <div class="text-view corrected-view" id="corrected-view"></div>
           </article>
@@ -75,7 +75,7 @@
           <div class="panel-header panel-header-inline">
             <div>
               <h2>Suggestions de correction</h2>
-              <p>Active ou desactive chaque correction avant l'export.</p>
+              <p>Active ou désactive chaque correction avant l'export.</p>
             </div>
             <span class="pill" id="selection-counter">0 selection</span>
           </div>
