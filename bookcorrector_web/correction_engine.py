@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from .models import AnalysisResult, Issue
 
@@ -64,16 +65,89 @@ STOP_WORDS = {
 
 EXACT_REPLACEMENTS = (
     ("quelque soit", "quel que soit", "grammaire", "Expression fautive courante."),
-    ("voir meme", "voire meme", "orthographe", "La bonne graphie est 'voire'."),
+    ("voir meme", "voire même", "orthographe", "La bonne graphie est 'voire'."),
     ("soit disant", "soi-disant", "orthographe", "La graphie correcte est avec trait d'union."),
-    ("comme meme", "quand meme", "orthographe", "Expression fautive courante."),
-    ("malgre que", "bien que", "grammaire", "Tour familier souvent juge fautif."),
+    ("comme meme", "quand même", "orthographe", "Expression fautive courante."),
+    ("malgre que", "bien que", "grammaire", "Forme fautive."),
     ("au jour d'aujourd'hui", "aujourd'hui", "style", "Expression redondante."),
+    ("a l'heure d'aujourd'hui", "aujourd'hui", "style", "Redondance."),
     ("d'avantage", "davantage", "orthographe", "Mot souvent confondu."),
     ("de part", "de par", "orthographe", "Locution figee."),
     ("quand a", "quant a", "orthographe", "Locution figee."),
     ("hors mis", "hormis", "orthographe", "La graphie correcte est en un mot."),
+    ("sa va", "ça va", "orthographe", "Confusion sa/ça."),
+    ("comme ca", "comme ça", "orthographe", "Accent obligatoire."),
+    ("tout a fait", "tout à fait", "orthographe", "Accent obligatoire."),
+    ("a partir de", "à partir de", "orthographe", "Accent obligatoire."),
+    ("en faite", "en fait", "orthographe", "Expression figee."),
+    ("il y a t'il", "y a-t-il", "orthographe", "Forme interrogative avec trait d'union."),
+    ("c'est des", "ce sont des", "grammaire", "Forme correcte."),
+    ("pres de", "près de", "orthographe", "Accent sur 'près'."),
+    ("plutot", "plutôt", "orthographe", "Accent circonflexe."),
+    ("tres", "très", "orthographe", "Accent obligatoire."),
+    ("des fois", "parfois", "style", "Formulation plus correcte."),
+    ("au final", "finalement", "style", "Usage familier."),
+    ("a cause que", "parce que", "grammaire", "Forme incorrecte."),
+    ("malgres", "malgré", "orthographe", "Pas de 's'."),
+    ("parmis", "parmi", "orthographe", "Pas de 's'."),
+    ("ainsi que", "ainsi que", "grammaire", "Attention a l'accord."),
+    ("quelques choses", "quelque chose", "orthographe", "Toujours singulier."),
+    ("il faut que tu fais", "il faut que tu fasses", "grammaire", "Subjonctif obligatoire."),
+    ("bien que il est", "bien qu'il soit", "grammaire", "Subjonctif requis."),
+    ("avant qu'il part", "avant qu'il parte", "grammaire", "Subjonctif requis."),
+    ("pour que il vient", "pour qu'il vienne", "grammaire", "Subjonctif requis."),
+    ("j'ai prit", "j'ai pris", "grammaire", "Participe passe incorrect."),
+    ("il a mit", "il a mis", "grammaire", "Participe passe incorrect."),
+    ("elle a permit", "elle a permis", "grammaire", "Participe passe incorrect."),
+    ("il a ouvert", "il a ouvert", "grammaire", "Attention a l'accord selon contexte."),
+    ("ce matin la", "ce matin-là", "orthographe", "Trait d'union."),
+    ("il ce passe", "il se passe", "orthographe", "Confusion ce/se."),
+    ("ce sont passer", "se sont passés", "grammaire", "Accord du participe."),
+    ("prevoir a l'avance", "prevoir", "style", "Pleonasme."),
+    ("descendre en bas", "descendre", "style", "Pleonasme."),
+    ("monter en haut", "monter", "style", "Pleonasme."),
+    ("voire meme", "voire", "style", "Redondance."),
+    ("collaborer ensemble", "collaborer", "style", "Pleonasme."),
+    ("de suite", "tout de suite", "style", "Forme plus soutenue."),
+    ("suite a", "a la suite de", "style", "Usage critique."),
+    ("par contre", "en revanche", "style", "Registre plus soutenu."),
+    ("base sur", "fondé sur", "style", "Anglicisme critique."),
+    ("du coup", "", "registre", "Langage oral."),
+    ("genre", "", "registre", "Langage familier."),
+    ("en mode", "", "registre", "Langage familier."),
+    ("amener quelqu'un", "emmener quelqu'un", "grammaire", "Difference de sens."),
+    ("emmener quelque chose", "amener quelque chose", "grammaire", "Difference de sens."),
+    ("apporter quelqu'un", "emmener quelqu'un", "grammaire", "Erreur frequente."),
+    ("ramener quelque chose", "rapporter quelque chose", "grammaire", "Difference de sens."),
+    ("apres que il soit", "après qu'il est", "grammaire", "Indicatif obligatoire."),
+    ("si j'aurais", "si j'avais", "grammaire", "Conditionnel interdit apres 'si'."),
+    ("je m'excuse", "je vous prie de m'excuser", "style", "Forme plus correcte."),
+    ("je vous pris", "je vous prie", "orthographe", "Forme correcte."),
+    ("cordialement bien a vous", "bien à vous", "style", "Formule simplifiée."),
+    ("quelque part", "quelque part", "orthographe", "Toujours en deux mots."),
+    ("tout les", "tous les", "orthographe", "Accord."),
+    ("tout le monde sont", "tout le monde est", "grammaire", "Sujet singulier."),
+    ("la plupart est", "la plupart sont", "grammaire", "Souvent pluriel."),
 )
+
+MANUAL_REVIEW_NEEDLES = {
+    "ainsi que",
+    "il a ouvert",
+    "du coup",
+    "genre",
+    "en mode",
+    "amener quelqu'un",
+    "emmener quelque chose",
+    "apporter quelqu'un",
+    "ramener quelque chose",
+    "je m'excuse",
+    "quelque part",
+    "suite a",
+    "par contre",
+    "base sur",
+    "des fois",
+    "au final",
+}
 
 STYLE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
@@ -128,12 +202,25 @@ class CorrectionEngine:
     def _collect_exact_replacements(self, text: str) -> list[Issue]:
         issues: list[Issue] = []
         next_id = 1
+        normalized_text = _normalize_for_exact_match(text)
         for needle, replacement, category, message in EXACT_REPLACEMENTS:
-            pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)", re.IGNORECASE)
-            for match in pattern.finditer(text):
+            normalized_needle = _normalize_for_exact_match(needle)
+            pattern = re.compile(rf"(?<!\w){re.escape(normalized_needle)}(?!\w)", re.IGNORECASE)
+            for match in pattern.finditer(normalized_text):
                 index = match.start()
                 end = match.end()
-                excerpt = match.group(0)
+                excerpt = text[index:end]
+                normalized_replacement = replacement.strip() or None
+                has_real_replacement = bool(
+                    normalized_replacement
+                    and _normalize_for_display_comparison(excerpt)
+                    != _normalize_for_display_comparison(normalized_replacement)
+                )
+                should_default_select = has_real_replacement and (
+                    category in {"orthographe", "grammaire"}
+                    and normalized_needle not in MANUAL_REVIEW_NEEDLES
+                )
+                suggestion = normalized_replacement or "Verification manuelle recommandee selon le contexte."
                 issues.append(
                     Issue(
                         issue_id=f"issue-{next_id}",
@@ -143,11 +230,11 @@ class CorrectionEngine:
                         start=index,
                         end=end,
                         source="regle-locale",
-                        suggestion=replacement,
-                        severity="haute" if category != "style" else "moyenne",
+                        suggestion=suggestion,
+                        severity=_severity_for_category(category, should_default_select),
                         confidence=0.93,
-                        replacement=_match_case(excerpt, replacement),
-                        default_selected=True,
+                        replacement=_match_case(excerpt, normalized_replacement) if has_real_replacement else None,
+                        default_selected=should_default_select,
                     )
                 )
                 next_id += 1
@@ -423,3 +510,25 @@ def _match_case(source: str, replacement: str) -> str:
     if source[:1].isupper():
         return replacement[:1].upper() + replacement[1:]
     return replacement
+
+
+def _normalize_for_exact_match(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    stripped = "".join(char for char in normalized if not unicodedata.combining(char))
+    return stripped.replace("’", "'").lower()
+
+
+def _severity_for_category(category: str, should_default_select: bool) -> str:
+    if category == "orthographe":
+        return "haute"
+    if category == "grammaire":
+        return "haute" if should_default_select else "moyenne"
+    if category == "registre":
+        return "faible"
+    if category == "style":
+        return "moyenne"
+    return "faible"
+
+
+def _normalize_for_display_comparison(value: str) -> str:
+    return value.replace("’", "'").lower()

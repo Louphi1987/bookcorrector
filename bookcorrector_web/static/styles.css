@@ -334,6 +334,10 @@ button:disabled {
   background: rgba(16, 185, 129, 0.16);
 }
 
+.issue-registre {
+  background: rgba(139, 92, 246, 0.16);
+}
+
 .changed-segment {
   background: rgba(245, 158, 11, 0.22);
   color: #7c2d12;

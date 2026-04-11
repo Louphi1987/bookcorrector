@@ -38,6 +38,7 @@ class AnalysisResult:
             "grammaire": sum(1 for issue in self.issues if issue.category == "grammaire"),
             "typographie": sum(1 for issue in self.issues if issue.category == "typographie"),
             "style": sum(1 for issue in self.issues if issue.category == "style"),
+            "registre": sum(1 for issue in self.issues if issue.category == "registre"),
         }
         return {
             "filename": filename,

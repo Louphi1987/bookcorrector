@@ -198,6 +198,7 @@ function renderStats(stats) {
     ["Grammaire", stats.grammaire],
     ["Typographie", stats.typographie],
     ["Style", stats.style],
+    ["Registre", stats.registre],
   ];
 
   entries.forEach(([label, value]) => {
