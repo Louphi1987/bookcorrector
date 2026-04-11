@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Karamaz Correcteur</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Karamaz Correcteur</p>
+          <h1>Un correcteur web gratuit pour manuscrits en francais</h1>
+          <p class="hero-text">
+            Depose un texte, analyse les suggestions, compare l'avant et l'apres, puis exporte une version Word claire pour retravailler ton manuscrit.
+          </p>
+          <div class="hero-notes">
+            <span>Sans API payante</span>
+            <span>Compatible Render gratuit</span>
+            <span>Service annexe potentiellement plus lent au reveil</span>
+          </div>
+        </div>
+        <div class="upload-card">
+          <form id="analyze-form">
+            <label class="dropzone" id="dropzone">
+              <input id="file-input" name="file" type="file" accept=".txt,.md,.markdown,.docx,.odt">
+              <span class="dropzone-title">Glisse ton manuscrit ici</span>
+              <span class="dropzone-subtitle">Formats pris en charge: {{ supported_extensions | join(', ') }}</span>
+            </label>
+            <div class="divider"><span>ou</span></div>
+            <label class="textarea-label" for="text-input">Colle un extrait ou un chapitre</label>
+            <textarea id="text-input" name="text" placeholder="Colle ici ton texte si tu ne veux pas uploader de fichier."></textarea>
+            <div class="actions">
+              <button class="primary-button" type="submit">Analyser le manuscrit</button>
+              <button class="secondary-button" id="clear-button" type="button">Reinitialiser</button>
+            </div>
+            <p class="latency-note">
+              Si le service est sur un plan gratuit en veille, la premiere analyse peut prendre un peu plus de temps.
+            </p>
+          </form>
+        </div>
+      </header>
+
+      <section class="results-shell" id="results-shell" hidden>
+        <div class="toolbar">
+          <div class="stats-grid" id="stats-grid"></div>
+          <div class="toolbar-actions">
+            <button class="secondary-button" id="select-safe-button" type="button">Appliquer les corrections sures</button>
+            <button class="secondary-button" id="unselect-all-button" type="button">Tout desactiver</button>
+            <button class="primary-button" id="export-docx-button" type="button">Exporter en Word</button>
+          </div>
+        </div>
+
+        <div class="status-panel" id="status-panel"></div>
+
+        <div class="comparison-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Texte original</h2>
+              <p>Les passages signales apparaissent en surbrillance.</p>
+            </div>
+            <div class="text-view issue-view" id="original-view"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Version corrigee</h2>
+              <p>Les changements selectionnes sont marques dans le texte.</p>
+            </div>
+            <div class="text-view corrected-view" id="corrected-view"></div>
+          </article>
+        </div>
+
+        <section class="panel suggestions-panel">
+          <div class="panel-header panel-header-inline">
+            <div>
+              <h2>Suggestions de correction</h2>
+              <p>Active ou desactive chaque correction avant l'export.</p>
+            </div>
+            <span class="pill" id="selection-counter">0 selection</span>
+          </div>
+          <div class="suggestions-list" id="suggestions-list"></div>
+        </section>
+      </section>
+    </div>
+
+    <template id="suggestion-template">
+      <label class="suggestion-card">
+        <input class="suggestion-toggle" type="checkbox">
+        <div class="suggestion-main">
+          <div class="suggestion-topline">
+            <span class="suggestion-category"></span>
+            <span class="suggestion-severity"></span>
+            <span class="suggestion-confidence"></span>
+          </div>
+          <p class="suggestion-message"></p>
+          <p class="suggestion-excerpt"></p>
+          <p class="suggestion-replacement"></p>
+        </div>
+      </label>
+    </template>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
