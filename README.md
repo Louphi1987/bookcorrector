@@ -46,6 +46,8 @@ Le projet inclut un fichier `render.yaml`. Il suffit de :
 4. verifier que le plan gratuit est choisi ;
 5. associer le sous-domaine `correcteur.karamaz.eu`.
 
+Render attend qu'un web service ecoute sur `0.0.0.0:$PORT`, ce qui est deja configure dans `render.yaml`.
+
 ## Limites volontaires de la V1
 
 - pas de dependance a macOS ;
