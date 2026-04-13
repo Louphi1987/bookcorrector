@@ -13,6 +13,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app import app
 
+try:
+    from spellchecker import SpellChecker  # noqa: F401
+
+    HAS_PYSPELLCHECKER = True
+except ImportError:
+    HAS_PYSPELLCHECKER = False
+
 
 class AppTestCase(unittest.TestCase):
     def setUp(self) -> None:
@@ -85,6 +92,20 @@ class AppTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         document = Document(io.BytesIO(response.data))
         self.assertTrue(document.paragraphs)
+
+    @unittest.skipUnless(HAS_PYSPELLCHECKER, "pyspellchecker not installed")
+    def test_detects_real_spelling_errors(self) -> None:
+        response = self.client.post(
+            "/api/analyze",
+            data={"text": "Karamaz aide à comencer un manuscrit independant avec beaucoups d'idees."},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        orthographe = {issue["excerpt"]: issue["replacement"] for issue in payload["issues"] if issue["category"] == "orthographe"}
+        self.assertEqual(orthographe.get("comencer"), "commencer")
+        self.assertEqual(orthographe.get("independant"), "indépendant")
+        self.assertEqual(orthographe.get("beaucoups"), "beaucoup")
+        self.assertNotIn("Karamaz", orthographe)
 
 
 if __name__ == "__main__":

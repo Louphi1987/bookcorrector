@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import pathlib
 import re
 import unicodedata
 
 from .models import AnalysisResult, Issue
+
+try:
+    from spellchecker import SpellChecker
+
+    SPELLCHECKER_AVAILABLE = True
+except ImportError:
+    SpellChecker = None
+    SPELLCHECKER_AVAILABLE = False
 
 
 WORD_PATTERN = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[’'-][A-Za-zÀ-ÖØ-öø-ÿ]+)*")
@@ -16,6 +25,7 @@ ELLIPSIS_THREE_DOTS = re.compile(r"\.\.\.")
 REPEATED_PUNCT = re.compile(r"([!?])\1{1,}")
 STRAIGHT_APOSTROPHE = re.compile(r"([A-Za-zÀ-ÖØ-öø-ÿ])'([A-Za-zÀ-ÖØ-öø-ÿ])")
 DOUBLE_WORD = re.compile(r"\b([A-Za-zÀ-ÖØ-öø-ÿ]{2,})\s+\1\b", re.IGNORECASE)
+TOKEN_PART_SPLIT = re.compile(r"([’'-])")
 
 STOP_WORDS = {
     "a",
@@ -172,8 +182,15 @@ STYLE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
 )
 
+SPELLING_PREFIX_PARTS = {"c", "d", "j", "l", "m", "n", "qu", "s", "t"}
+SPELLING_MIN_LENGTH = 4
+CUSTOM_WORDS_PATH = pathlib.Path(__file__).resolve().parent / "resources" / "custom_words_fr.txt"
+
 
 class CorrectionEngine:
+    def __init__(self) -> None:
+        self._spellchecker = self._build_spellchecker()
+
     def analyze(self, text: str) -> AnalysisResult:
         normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
         warnings: list[str] = []
@@ -182,7 +199,10 @@ class CorrectionEngine:
             return AnalysisResult(original_text="", warnings=warnings)
 
         issues = []
-        issues.extend(self._collect_exact_replacements(normalized))
+        exact_issues = self._collect_exact_replacements(normalized)
+        protected_ranges = [(issue.start, issue.end) for issue in exact_issues if issue.category in {"orthographe", "grammaire"}]
+        issues.extend(exact_issues)
+        issues.extend(self._collect_spelling_issues(normalized, protected_ranges, warnings))
         issues.extend(self._collect_typography_issues(normalized))
         issues.extend(self._collect_sentence_style_issues(normalized))
         issues.extend(self._collect_style_patterns(normalized))
@@ -190,6 +210,21 @@ class CorrectionEngine:
         deduped = self._deduplicate(issues)
         deduped.sort(key=lambda issue: (issue.start, issue.end, issue.category))
         return AnalysisResult(original_text=normalized, issues=deduped, warnings=warnings)
+
+    def _build_spellchecker(self):
+        if not SPELLCHECKER_AVAILABLE:
+            return None
+
+        spellchecker = SpellChecker(language="fr", distance=1)
+        if CUSTOM_WORDS_PATH.exists():
+            custom_words = [
+                line.strip()
+                for line in CUSTOM_WORDS_PATH.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.strip().startswith("#")
+            ]
+            if custom_words:
+                spellchecker.word_frequency.load_words(custom_words)
+        return spellchecker
 
     def _collect_exact_replacements(self, text: str) -> list[Issue]:
         issues: list[Issue] = []
@@ -231,6 +266,131 @@ class CorrectionEngine:
                 )
                 next_id += 1
         return issues
+
+    def _collect_spelling_issues(
+        self,
+        text: str,
+        protected_ranges: list[tuple[int, int]],
+        warnings: list[str],
+    ) -> list[Issue]:
+        spellchecker = self._spellchecker
+        if spellchecker is None:
+            warnings.append(
+                "Le dictionnaire orthographique avance n'est pas disponible dans cet environnement. "
+                "L'analyse orthographique restera limitee aux regles explicites."
+            )
+            return []
+
+        issues: list[Issue] = []
+        next_id = 500
+        for match in WORD_PATTERN.finditer(text):
+            token = match.group(0)
+            start = match.start()
+            end = match.end()
+
+            if _range_overlaps(start, end, protected_ranges):
+                continue
+            if self._should_skip_spelling_token(token, text, start):
+                continue
+
+            suggestion_payload = self._build_spelling_suggestion(token, spellchecker)
+            if suggestion_payload is None:
+                continue
+
+            replacement, suggestions = suggestion_payload
+            safe_auto_apply = bool(replacement and _is_safe_spelling_replacement(token, replacement))
+            issues.append(
+                Issue(
+                    issue_id=f"issue-{next_id}",
+                    category="orthographe",
+                    message="Mot potentiellement mal orthographie.",
+                    excerpt=token,
+                    start=start,
+                    end=end,
+                    source="dictionnaire-fr",
+                    suggestion=", ".join(suggestions) if suggestions else "Verification manuelle recommandee.",
+                    severity="haute" if safe_auto_apply else "moyenne",
+                    confidence=0.9 if safe_auto_apply else 0.68,
+                    replacement=replacement,
+                    default_selected=safe_auto_apply,
+                )
+            )
+            next_id += 1
+
+        return issues
+
+    def _should_skip_spelling_token(self, token: str, text: str, start: int) -> bool:
+        plain = _normalize_for_exact_match(token)
+        alpha_length = sum(1 for char in plain if char.isalpha())
+        if alpha_length < SPELLING_MIN_LENGTH and "’" not in token and "'" not in token and "-" not in token:
+            return True
+        if token.isupper():
+            return True
+        if plain in STOP_WORDS:
+            return True
+        if _is_likely_proper_noun(token, text, start):
+            return True
+        return False
+
+    def _build_spelling_suggestion(self, token: str, spellchecker) -> tuple[str | None, list[str]] | None:
+        if any(separator in token for separator in ("’", "'", "-")):
+            return self._build_compound_spelling_suggestion(token, spellchecker)
+        return self._build_simple_spelling_suggestion(token, spellchecker)
+
+    def _build_simple_spelling_suggestion(self, token: str, spellchecker) -> tuple[str | None, list[str]] | None:
+        normalized = _normalize_for_display_comparison(token)
+        if normalized in spellchecker:
+            return None
+
+        ordered = _rank_spellchecker_candidates(spellchecker, normalized)
+        if not ordered:
+            return None
+
+        replacement = _match_case(token, ordered[0])
+        suggestions = [_match_case(token, suggestion) for suggestion in ordered[:3]]
+        return replacement, suggestions
+
+    def _build_compound_spelling_suggestion(self, token: str, spellchecker) -> tuple[str | None, list[str]] | None:
+        parts = TOKEN_PART_SPLIT.split(token)
+        changed = False
+        corrected_parts: list[str] = []
+        all_suggestions: list[str] = []
+
+        for index, part in enumerate(parts):
+            if not part or TOKEN_PART_SPLIT.fullmatch(part):
+                corrected_parts.append(part)
+                continue
+
+            normalized_part = _normalize_for_display_comparison(part)
+            previous_part = parts[index - 1] if index > 0 else ""
+            if previous_part in {"’", "'"} and normalized_part and len(_normalize_for_exact_match(part)) > 1:
+                prefix = _normalize_for_exact_match(parts[index - 2]) if index >= 2 else ""
+                if prefix in SPELLING_PREFIX_PARTS:
+                    corrected_parts.append(part)
+                    continue
+
+            if len(_normalize_for_exact_match(part)) < SPELLING_MIN_LENGTH:
+                corrected_parts.append(part)
+                continue
+            if normalized_part in self._spellchecker:
+                corrected_parts.append(part)
+                continue
+
+            ordered = _rank_spellchecker_candidates(spellchecker, normalized_part)
+            if not ordered:
+                corrected_parts.append(part)
+                continue
+
+            corrected = _match_case(part, ordered[0])
+            corrected_parts.append(corrected)
+            all_suggestions.extend(_match_case(part, suggestion) for suggestion in ordered[:2])
+            changed = True
+
+        if not changed:
+            return None
+
+        replacement = "".join(corrected_parts)
+        return replacement, [replacement, *all_suggestions]
 
     def _collect_typography_issues(self, text: str) -> list[Issue]:
         issues: list[Issue] = []
@@ -524,3 +684,65 @@ def _severity_for_category(category: str, should_default_select: bool) -> str:
 
 def _normalize_for_display_comparison(value: str) -> str:
     return value.replace("’", "'").lower()
+
+
+def _range_overlaps(start: int, end: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(not (end <= range_start or start >= range_end) for range_start, range_end in ranges)
+
+
+def _is_likely_proper_noun(token: str, text: str, start: int) -> bool:
+    if not token[:1].isupper():
+        return False
+    cursor = start - 1
+    while cursor >= 0 and text[cursor].isspace():
+        cursor -= 1
+    if cursor < 0:
+        return False
+    return text[cursor] not in ".!?\n:;«"
+
+
+def _rank_spellchecker_candidates(spellchecker, word: str) -> list[str]:
+    candidates = spellchecker.candidates(word)
+    if not candidates:
+        return []
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            -spellchecker.word_usage_frequency(candidate),
+            _levenshtein_distance(word, candidate),
+            candidate,
+        ),
+    )
+
+
+def _is_safe_spelling_replacement(source: str, replacement: str) -> bool:
+    normalized_source = _normalize_for_exact_match(source)
+    normalized_replacement = _normalize_for_exact_match(replacement)
+    if normalized_source == normalized_replacement:
+        return False
+    if normalized_source[:1] != normalized_replacement[:1]:
+        return False
+    if len(normalized_source) >= 5 and len(normalized_replacement) >= 5:
+        if normalized_source[:2] != normalized_replacement[:2]:
+            return False
+    return _levenshtein_distance(normalized_source, normalized_replacement) <= 2
+
+
+def _levenshtein_distance(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+
+    previous = list(range(len(right) + 1))
+    for left_index, left_char in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_char in enumerate(right, start=1):
+            insertion = current[right_index - 1] + 1
+            deletion = previous[right_index] + 1
+            substitution = previous[right_index - 1] + (left_char != right_char)
+            current.append(min(insertion, deletion, substitution))
+        previous = current
+    return previous[-1]
