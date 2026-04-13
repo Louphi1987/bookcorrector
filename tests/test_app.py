@@ -93,11 +93,24 @@ class AppTestCase(unittest.TestCase):
         document = Document(io.BytesIO(response.data))
         self.assertTrue(document.paragraphs)
 
+    def test_detects_common_contextual_grammar_errors(self) -> None:
+        response = self.client.post(
+            "/api/analyze",
+            data={"text": "Je c'est pas. Sa a marcher. Il ont prit tout les chemins."},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        replacements = {issue["excerpt"]: issue["replacement"] for issue in payload["issues"] if issue["replacement"]}
+        self.assertEqual(replacements.get("Je c'est"), "Je sais")
+        self.assertEqual(replacements.get("Sa a marcher"), "Ça a marché")
+        self.assertEqual(replacements.get("Il ont prit"), "Ils ont pris")
+        self.assertEqual(replacements.get("tout les"), "tous les")
+
     @unittest.skipUnless(HAS_PYSPELLCHECKER, "pyspellchecker not installed")
     def test_detects_real_spelling_errors(self) -> None:
         response = self.client.post(
             "/api/analyze",
-            data={"text": "Karamaz aide à comencer un manuscrit independant avec beaucoups d'idees."},
+            data={"text": "Karamaz aide à comencer un manuscrit independant avec beaucoups d'idees et des details."},
         )
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -105,7 +118,15 @@ class AppTestCase(unittest.TestCase):
         self.assertEqual(orthographe.get("comencer"), "commencer")
         self.assertEqual(orthographe.get("independant"), "indépendant")
         self.assertEqual(orthographe.get("beaucoups"), "beaucoup")
+        self.assertEqual(orthographe.get("details"), "détails")
         self.assertNotIn("Karamaz", orthographe)
+        selected_excerpts = {
+            issue["excerpt"]
+            for issue in payload["issues"]
+            if issue["id"] in payload["selected_ids"]
+        }
+        self.assertIn("independant", selected_excerpts)
+        self.assertIn("details", selected_excerpts)
 
 
 if __name__ == "__main__":

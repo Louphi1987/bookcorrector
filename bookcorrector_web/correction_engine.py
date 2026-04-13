@@ -26,6 +26,33 @@ REPEATED_PUNCT = re.compile(r"([!?])\1{1,}")
 STRAIGHT_APOSTROPHE = re.compile(r"([A-Za-zÀ-ÖØ-öø-ÿ])'([A-Za-zÀ-ÖØ-öø-ÿ])")
 DOUBLE_WORD = re.compile(r"\b([A-Za-zÀ-ÖØ-öø-ÿ]{2,})\s+\1\b", re.IGNORECASE)
 TOKEN_PART_SPLIT = re.compile(r"([’'-])")
+JE_CEST_PATTERN = re.compile(r"\bje\s+c['’]?est\b", re.IGNORECASE)
+SA_A_PATTERN = re.compile(r"\bsa\s+a\b", re.IGNORECASE)
+SA_SE_PATTERN = re.compile(r"\bsa\s+se\b", re.IGNORECASE)
+IL_ONT_PATTERN = re.compile(r"\bil\s+ont\b", re.IGNORECASE)
+ELLE_ONT_PATTERN = re.compile(r"\belle\s+ont\b", re.IGNORECASE)
+AUXILIARY_FORMS_PATTERN = (
+    r"ai|as|a|avons|avez|ont|avais|avait|avions|aviez|avaient|"
+    r"aurai|auras|aura|aurons|aurez|auront|"
+    r"suis|es|est|sommes|etes|sont|"
+    r"serai|seras|sera|serons|serez|seront|"
+    r"étais|était|étions|étiez|étaient|"
+    r"etais|etait|etions|etiez|etaient"
+)
+AUXILIARY_ER_PATTERN = re.compile(
+    rf"\b(?P<aux>{AUXILIARY_FORMS_PATTERN})\s+(?P<lemma>[A-Za-zÀ-ÖØ-öø-ÿ]{{3,}}er)\b",
+    re.IGNORECASE,
+)
+AUXILIARY_PRIT_PATTERN = re.compile(rf"\b(?P<aux>{AUXILIARY_FORMS_PATTERN})\s+prit\b", re.IGNORECASE)
+AUXILIARY_MIT_PATTERN = re.compile(rf"\b(?P<aux>{AUXILIARY_FORMS_PATTERN})\s+mit\b", re.IGNORECASE)
+AUXILIARY_PERMIT_PATTERN = re.compile(rf"\b(?P<aux>{AUXILIARY_FORMS_PATTERN})\s+permit\b", re.IGNORECASE)
+SA_A_ER_PATTERN = re.compile(r"\bsa\s+a\s+(?P<lemma>[A-Za-zÀ-ÖØ-öø-ÿ]{3,}er)\b", re.IGNORECASE)
+IL_ONT_ER_PATTERN = re.compile(r"\bil\s+ont\s+(?P<lemma>[A-Za-zÀ-ÖØ-öø-ÿ]{3,}er)\b", re.IGNORECASE)
+ELLE_ONT_ER_PATTERN = re.compile(r"\belle\s+ont\s+(?P<lemma>[A-Za-zÀ-ÖØ-öø-ÿ]{3,}er)\b", re.IGNORECASE)
+IL_ONT_PRIT_PATTERN = re.compile(r"\bil\s+ont\s+prit\b", re.IGNORECASE)
+ELLE_ONT_PRIT_PATTERN = re.compile(r"\belle\s+ont\s+prit\b", re.IGNORECASE)
+IL_ONT_MIT_PATTERN = re.compile(r"\bil\s+ont\s+mit\b", re.IGNORECASE)
+ELLE_ONT_MIT_PATTERN = re.compile(r"\belle\s+ont\s+mit\b", re.IGNORECASE)
 
 STOP_WORDS = {
     "a",
@@ -200,10 +227,22 @@ class CorrectionEngine:
 
         issues = []
         exact_issues = self._collect_exact_replacements(normalized)
-        protected_ranges = [(issue.start, issue.end) for issue in exact_issues if issue.category in {"orthographe", "grammaire"}]
+        contextual_issues = self._collect_contextual_replacements(normalized)
+        protected_ranges = [
+            (issue.start, issue.end)
+            for issue in [*exact_issues, *contextual_issues]
+            if issue.category in {"orthographe", "grammaire"}
+        ]
         issues.extend(exact_issues)
-        issues.extend(self._collect_spelling_issues(normalized, protected_ranges, warnings))
-        issues.extend(self._collect_typography_issues(normalized))
+        issues.extend(contextual_issues)
+        spelling_issues = self._collect_spelling_issues(normalized, protected_ranges, warnings)
+        issues.extend(spelling_issues)
+        language_ranges = [
+            (issue.start, issue.end)
+            for issue in [*exact_issues, *contextual_issues, *spelling_issues]
+            if issue.category in {"orthographe", "grammaire"}
+        ]
+        issues.extend(self._collect_typography_issues(normalized, language_ranges))
         issues.extend(self._collect_sentence_style_issues(normalized))
         issues.extend(self._collect_style_patterns(normalized))
 
@@ -265,6 +304,126 @@ class CorrectionEngine:
                     )
                 )
                 next_id += 1
+        return issues
+
+    def _collect_contextual_replacements(self, text: str) -> list[Issue]:
+        issues: list[Issue] = []
+        next_id = 250
+
+        def add_issue(
+            match: re.Match[str],
+            replacement: str,
+            category: str,
+            message: str,
+            confidence: float = 0.88,
+        ) -> None:
+            nonlocal next_id
+            start = match.start()
+            end = match.end()
+            if _range_overlaps(start, end, [(issue.start, issue.end) for issue in issues]):
+                return
+
+            excerpt = text[start:end]
+            fixed = _match_case(excerpt, replacement)
+            issues.append(
+                Issue(
+                    issue_id=f"issue-{next_id}",
+                    category=category,
+                    message=message,
+                    excerpt=excerpt,
+                    start=start,
+                    end=end,
+                    source="regle-contextuelle",
+                    suggestion=fixed,
+                    severity=_severity_for_category(category, True),
+                    confidence=confidence,
+                    replacement=fixed,
+                    default_selected=True,
+                )
+            )
+            next_id += 1
+
+        for match in SA_A_ER_PATTERN.finditer(text):
+            lemma = match.group("lemma")
+            add_issue(
+                match,
+                f"ça a {_infinitive_to_past_participle(lemma)}",
+                "grammaire",
+                "Apres 'a', on attend generalement un participe passe.",
+                0.94,
+            )
+
+        for match in IL_ONT_ER_PATTERN.finditer(text):
+            lemma = match.group("lemma")
+            add_issue(
+                match,
+                f"ils ont {_infinitive_to_past_participle(lemma)}",
+                "grammaire",
+                "Le sujet pluriel et le participe passe semblent attendus ici.",
+                0.93,
+            )
+
+        for match in ELLE_ONT_ER_PATTERN.finditer(text):
+            lemma = match.group("lemma")
+            add_issue(
+                match,
+                f"elles ont {_infinitive_to_past_participle(lemma)}",
+                "grammaire",
+                "Le sujet pluriel et le participe passe semblent attendus ici.",
+                0.93,
+            )
+
+        for pattern, replacement in (
+            (IL_ONT_PRIT_PATTERN, "ils ont pris"),
+            (ELLE_ONT_PRIT_PATTERN, "elles ont pris"),
+            (IL_ONT_MIT_PATTERN, "ils ont mis"),
+            (ELLE_ONT_MIT_PATTERN, "elles ont mis"),
+        ):
+            for match in pattern.finditer(text):
+                add_issue(
+                    match,
+                    replacement,
+                    "grammaire",
+                    "Le sujet pluriel et le participe passe semblent attendus ici.",
+                    0.95,
+                )
+
+        for match in AUXILIARY_ER_PATTERN.finditer(text):
+            aux = match.group("aux")
+            lemma = match.group("lemma")
+            add_issue(
+                match,
+                f"{aux} {_infinitive_to_past_participle(lemma)}",
+                "grammaire",
+                "Apres un auxiliaire, on attend generalement un participe passe.",
+                0.87,
+            )
+
+        for pattern, corrected_participle in (
+            (AUXILIARY_PRIT_PATTERN, "pris"),
+            (AUXILIARY_MIT_PATTERN, "mis"),
+            (AUXILIARY_PERMIT_PATTERN, "permis"),
+        ):
+            for match in pattern.finditer(text):
+                aux = match.group("aux")
+                add_issue(
+                    match,
+                    f"{aux} {corrected_participle}",
+                    "grammaire",
+                    "Participe passe incorrect apres auxiliaire.",
+                    0.92,
+                )
+
+        for pattern, replacement, category, message, confidence in (
+            (JE_CEST_PATTERN, "je sais", "grammaire", "Confusion entre 'c'est' et le verbe savoir.", 0.96),
+            (SA_A_PATTERN, "ça a", "orthographe", "Confusion frequente entre 'sa' et 'ca'.", 0.96),
+            (SA_SE_PATTERN, "ça se", "orthographe", "Confusion frequente entre 'sa' et 'ca'.", 0.95),
+            (IL_ONT_PATTERN, "ils ont", "grammaire", "Le sujet pluriel semble attendu ici.", 0.84),
+            (ELLE_ONT_PATTERN, "elles ont", "grammaire", "Le sujet pluriel semble attendu ici.", 0.84),
+        ):
+            for match in pattern.finditer(text):
+                add_issue(match, replacement, category, message, confidence)
+
         return issues
 
     def _collect_spelling_issues(
@@ -392,11 +551,13 @@ class CorrectionEngine:
         replacement = "".join(corrected_parts)
         return replacement, [replacement, *all_suggestions]
 
-    def _collect_typography_issues(self, text: str) -> list[Issue]:
+    def _collect_typography_issues(self, text: str, protected_ranges: list[tuple[int, int]]) -> list[Issue]:
         issues: list[Issue] = []
         next_id = 1000
 
         for match in DOUBLE_SPACES.finditer(text):
+            if _range_overlaps(match.start(), match.end(), protected_ranges):
+                continue
             issues.append(
                 Issue(
                     issue_id=f"issue-{next_id}",
@@ -416,6 +577,8 @@ class CorrectionEngine:
             next_id += 1
 
         for match in BAD_COMMA_SPACING.finditer(text):
+            if _range_overlaps(match.start(), match.end(), protected_ranges):
+                continue
             issues.append(
                 Issue(
                     issue_id=f"issue-{next_id}",
@@ -435,6 +598,8 @@ class CorrectionEngine:
             next_id += 1
 
         for match in MISSING_SPACE_AFTER_PUNCT.finditer(text):
+            if _range_overlaps(match.start(), match.end(), protected_ranges):
+                continue
             replacement = f"{match.group(1)} {match.group(2)}"
             issues.append(
                 Issue(
@@ -455,6 +620,8 @@ class CorrectionEngine:
             next_id += 1
 
         for match in MISSING_SPACE_BEFORE_DOUBLE_PUNCT.finditer(text):
+            if _range_overlaps(match.start(), match.end(), protected_ranges):
+                continue
             if match.group(1) == "\n":
                 continue
             replacement = f"{match.group(1)} {match.group(2)}"
@@ -477,6 +644,8 @@ class CorrectionEngine:
             next_id += 1
 
         for match in ELLIPSIS_THREE_DOTS.finditer(text):
+            if _range_overlaps(match.start(), match.end(), protected_ranges):
+                continue
             issues.append(
                 Issue(
                     issue_id=f"issue-{next_id}",
@@ -496,6 +665,8 @@ class CorrectionEngine:
             next_id += 1
 
         for match in STRAIGHT_APOSTROPHE.finditer(text):
+            if _range_overlaps(match.start(), match.end(), protected_ranges):
+                continue
             replacement = f"{match.group(1)}’{match.group(2)}"
             issues.append(
                 Issue(
@@ -716,10 +887,14 @@ def _rank_spellchecker_candidates(spellchecker, word: str) -> list[str]:
 
 
 def _is_safe_spelling_replacement(source: str, replacement: str) -> bool:
+    display_source = _normalize_for_display_comparison(source)
+    display_replacement = _normalize_for_display_comparison(replacement)
     normalized_source = _normalize_for_exact_match(source)
     normalized_replacement = _normalize_for_exact_match(replacement)
-    if normalized_source == normalized_replacement:
+    if display_source == display_replacement:
         return False
+    if normalized_source == normalized_replacement:
+        return True
     if normalized_source[:1] != normalized_replacement[:1]:
         return False
     if len(normalized_source) >= 5 and len(normalized_replacement) >= 5:
@@ -746,3 +921,10 @@ def _levenshtein_distance(left: str, right: str) -> int:
             current.append(min(insertion, deletion, substitution))
         previous = current
     return previous[-1]
+
+
+def _infinitive_to_past_participle(verb: str) -> str:
+    lowered = _normalize_for_display_comparison(verb)
+    if not lowered.endswith("er"):
+        return verb
+    return _match_case(verb, lowered[:-2] + "é")
